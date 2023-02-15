@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,7 +31,7 @@ func init() {
 	)
 
 	server = gin.Default()
-	server.Use(cors.Default())
+	// server.Use(cors.Default())
 }
 
 func main() {
