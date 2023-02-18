@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,6 +31,12 @@ func init() {
 	)
 
 	server = gin.Default()
+	server.Use(func() gin.HandlerFunc {
+		return func(c *gin.Context) {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+			c.Writer.Header().Set("Access-Control-Allow-Methods", "PUT, POST, GET, DELETE, OPTIONS")
+		}
+	}())
 }
 
 func main() {
@@ -50,6 +55,5 @@ func main() {
 	routes.AuthRoutes(router)
 	routes.MemberRoutes(router)
 
-	server.Use(cors.Default())
 	server.Run()
 }
