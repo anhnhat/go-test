@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 var Status = map[string]int{
@@ -27,10 +28,15 @@ func RetrieveProject(ctx *gin.Context) {
 
 	var projects = []models.Project{}
 	status, haveStatus := ctx.GetQuery("status")
+	keyword, haveKeyword := ctx.GetQuery("keyword")
+
 	var query = initializers.DB.Limit(intLimit).Offset(offset)
 
 	if haveStatus {
 		query.Where("status_id = ?", Status[status])
+	}
+	if haveKeyword {
+		query.Where("name LIKE ?", "%"+keyword+"%")
 	}
 	query.Preload("Members").Find(&projects)
 
@@ -101,13 +107,12 @@ func GetProjectByIdOrName(ctx *gin.Context) {
 	var project = models.Project{}
 	id, err := strconv.Atoi(idParam)
 
-	var result = initializers.DB
+	var result *gorm.DB
 	if err != nil {
-		result.Where("name LIKE ?", "%"+idParam+"%")
+		result = initializers.DB.Where("name LIKE ?", "%"+idParam+"%").Preload("Members").First(&project)
 	} else {
-		result.Where("id = ?", id)
+		result = initializers.DB.Where("id = ?", id).Preload("Members").First(&project)
 	}
-	result.Preload("Members").First(&project)
 
 	if result.Error != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{

@@ -23,18 +23,19 @@ type Member struct {
 	TeamID    int        `gorm:"default:null"`
 	Team      Team       `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 	WorkModel WorkModel  `gorm:"default:0"`
-	Salary    float32    `gorm:"type:decimal(20,3);"`
-	OtherCost float32    `gorm:"type:decimal(20,3);"`
+	Salary    float32    `gorm:"type:decimal(20,3);default:null;"`
+	OtherCost float32    `gorm:"type:decimal(20,3);default:null;"`
+	StartDate time.Time  `gorm:"default:NULL"`
 }
 
 type CreateMemberRequest struct {
 	Name      string    `json:"Name" binding:"required"`
 	Email     string    `json:"Email,omitempty" binding:"required"`
-	TeamID    uint      `json:"TeamID"`
+	TeamID    uint      `json:"TeamID,omitempty"`
 	Roles     []int     `json:"Roles"`
 	WorkModel int       `json:"WorkModel"`
-	Salary    float32   `json:"Salary"`
-	OtherCost float32   `json:"OtherCost"`
-	Projects  []int     `json:"ProjectIds"`
-	StartDate time.Time `json:"StartDate"`
+	Salary    float32   `json:"Salary,omitempty"`
+	OtherCost float32   `json:"OtherCost,omitempty"`
+	Projects  []int     `json:"ProjectIds,omitempty"`
+	StartDate time.Time `json:"StartDate,omitempty"`
 }

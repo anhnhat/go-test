@@ -4,25 +4,43 @@ import (
 	"http-server/initializers"
 	"http-server/models"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
 
 func RetreiveMembers(ctx *gin.Context) {
-	members := []models.Member{}
+	var page = ctx.DefaultQuery("page", "1")
+	var limit = ctx.DefaultQuery("limit", "10")
+	intPage, _ := strconv.Atoi(page)
+	intLimit, _ := strconv.Atoi(limit)
+	offset := (intPage - 1) * intLimit
 
-	result := initializers.DB.Find(&members)
-	if result.Error != nil {
+	members := []models.Member{}
+	teamID, haveTeam := ctx.GetQuery("team_id")
+	keyword, haveKeyword := ctx.GetQuery("keyword")
+
+	var query = initializers.DB.Limit(intLimit).Offset(offset)
+
+	if haveTeam {
+		query.Where("team_id = ?", teamID)
+	}
+	if haveKeyword {
+		query.Where("name LIKE ?", "%"+keyword+"%")
+	}
+	query.Preload("Team").Preload("Roles").Find(&members)
+
+	if query.Error != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
-			"message": result.Error,
+			"message": query.Error,
 		})
 		return
 	}
 
-	ctx.JSON(http.StatusBadRequest, gin.H{
-		"status":  "error",
-		"message": members,
+	ctx.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data":   members,
 	})
 }
 
@@ -52,6 +70,7 @@ func CreateMember(ctx *gin.Context) {
 		WorkModel: models.WorkModel(payload.WorkModel),
 		Salary:    float32(payload.Salary),
 		OtherCost: float32(payload.OtherCost),
+		StartDate: payload.StartDate,
 	}
 
 	result := initializers.DB.Create(&member)
@@ -70,11 +89,56 @@ func CreateMember(ctx *gin.Context) {
 	})
 }
 
+func UpdateMember(ctx *gin.Context) {
+	id := ctx.Param("id")
+	var payload *models.CreateMemberRequest
+
+	if err := ctx.ShouldBind(&payload); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	roles := []*models.Role{}
+	projects := []*models.Project{}
+
+	initializers.DB.Find(&roles, payload.Roles)
+	initializers.DB.Find(&projects, payload.Projects)
+
+	member := models.Member{
+		Name:      payload.Name,
+		Email:     payload.Email,
+		Roles:     roles,
+		Projects:  projects,
+		TeamID:    int(payload.TeamID),
+		WorkModel: models.WorkModel(payload.WorkModel),
+		Salary:    float32(payload.Salary),
+		OtherCost: float32(payload.OtherCost),
+	}
+
+	result := initializers.DB.Model(&models.Member{}).Where("id = ?", id).Updates(&member)
+
+	if result.Error != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"status":  "error",
+			"message": "Cannot update project",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data":   member,
+	})
+}
+
 func GetMember(ctx *gin.Context) {
 	id := ctx.Param("id")
 
 	member := models.Member{}
-	result := initializers.DB.First(&member, id)
+	result := initializers.DB.Where("id = ?", id).Preload("Roles").Preload("Projects").Preload("Team").First(&member, id)
 
 	if result.Error != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
@@ -87,5 +151,23 @@ func GetMember(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"status": "success",
 		"data":   member,
+	})
+}
+
+func DeleteMember(ctx *gin.Context) {
+	id := ctx.Param("id")
+	result := initializers.DB.Delete(&models.Member{}, id)
+
+	if result.Error != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "Cannot delete member",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "Deleted",
 	})
 }
