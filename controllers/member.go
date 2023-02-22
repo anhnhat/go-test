@@ -101,24 +101,32 @@ func UpdateMember(ctx *gin.Context) {
 		return
 	}
 
-	roles := []*models.Role{}
-	projects := []*models.Project{}
-
-	initializers.DB.Find(&roles, payload.Roles)
-	initializers.DB.Find(&projects, payload.Projects)
-
 	member := models.Member{
 		Name:      payload.Name,
 		Email:     payload.Email,
-		Roles:     roles,
-		Projects:  projects,
 		TeamID:    int(payload.TeamID),
 		WorkModel: models.WorkModel(payload.WorkModel),
 		Salary:    float32(payload.Salary),
 		OtherCost: float32(payload.OtherCost),
 	}
 
-	result := initializers.DB.Model(&models.Member{}).Where("id = ?", id).Updates(&member)
+	result := initializers.DB.Model(&member).Where("id = ?", id).Updates(&member)
+
+	memberId, _ := strconv.Atoi(id)
+
+	if roleErr := AssignRolesToMember(memberId, payload.Roles); roleErr != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"status":  "error",
+			"message": roleErr.Error(),
+		})
+	}
+
+	if err := AssignProjectsToMember(memberId, payload.Projects); err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"status":  "error",
+			"message": err.Error(),
+		})
+	}
 
 	if result.Error != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{
@@ -170,4 +178,26 @@ func DeleteMember(ctx *gin.Context) {
 		"status":  "success",
 		"message": "Deleted",
 	})
+}
+
+func AssignProjectsToMember(memberId int, projectIds []int) error {
+	member := models.Member{}
+	projects := []models.Project{}
+
+	initializers.DB.First(&member, memberId)
+	initializers.DB.Where("id IN ?", projectIds).Find(&projects)
+	err := initializers.DB.Model(&member).Association("Projects").Replace(&projects)
+
+	return err
+}
+
+func AssignRolesToMember(memberId int, roleIds []int) error {
+	member := models.Member{}
+	roles := []models.Role{}
+
+	initializers.DB.First(&member, memberId)
+	initializers.DB.Where("id IN ?", roleIds).Find(&roles)
+	err := initializers.DB.Model(&member).Association("Roles").Replace(&roles)
+
+	return err
 }

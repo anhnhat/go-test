@@ -66,7 +66,7 @@ func CreateProject(ctx *gin.Context) {
 	}
 
 	members := []*models.Member{}
-	membersResult := initializers.DB.Where(payload.Members).Find(&members)
+	membersResult := initializers.DB.Where("id IN ?", payload.Members).Find(&members)
 
 	if membersResult.Error != nil {
 		fmt.Println(membersResult.Error)
@@ -130,6 +130,8 @@ func GetProjectByIdOrName(ctx *gin.Context) {
 func UpdateProject(ctx *gin.Context) {
 	id := ctx.Param("id")
 	var payload *models.CreateProjectRequest
+	var projectInstance models.Project
+
 	if err := ctx.ShouldBindJSON(&payload); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
@@ -138,20 +140,12 @@ func UpdateProject(ctx *gin.Context) {
 		return
 	}
 
-	members := []*models.Member{}
-	membersResult := initializers.DB.Where(payload.Members).Find(&members)
-
-	if membersResult.Error != nil {
-		fmt.Println(membersResult.Error)
-	}
-
 	project := models.Project{
 		Name:           payload.Name,
 		Description:    payload.Description,
 		StatusID:       payload.StatusID,
 		Priority:       payload.Priority,
 		Health:         payload.Health,
-		Members:        members,
 		StartDate:      payload.StartDate,
 		EndDate:        payload.EndDate,
 		ClientName:     payload.ClientName,
@@ -159,7 +153,12 @@ func UpdateProject(ctx *gin.Context) {
 		ActualReceived: payload.ActualReceived,
 	}
 
-	result := initializers.DB.Model(&models.Project{}).Where("id = ?", id).Updates(&project)
+	result := initializers.DB.Model(&projectInstance).Where("id = ?", id).Updates(&project)
+
+	projectId, _ := strconv.Atoi(id)
+	if err := AssignMembersToProject(projectId, payload.Members); err != nil {
+		println("Cannot save to association member_projects")
+	}
 
 	if result.Error != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{
@@ -191,4 +190,16 @@ func DeleteProject(ctx *gin.Context) {
 		"status":  "success",
 		"message": "Deleted",
 	})
+}
+
+func AssignMembersToProject(projectId int, memberIds []uint) (err error) {
+	project := models.Project{}
+	members := []models.Member{}
+
+	println("Project ID 2: %s", projectId)
+	initializers.DB.First(&project, projectId)
+	initializers.DB.Where("id IN ?", memberIds).Find(&members)
+	err = initializers.DB.Model(&project).Association("Members").Replace(&members)
+
+	return err
 }
