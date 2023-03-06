@@ -1,49 +1,25 @@
 package controllers
 
 import (
-	"fmt"
-	"http-server/initializers"
-	"http-server/models"
 	"net/http"
 	"strconv"
 
+	"http-server/models"
+
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
-var Status = map[string]int{
-	"Planning":   0,
-	"Inprogress": 1,
-	"Completed":  2,
-	"Overdue":    3,
-	"Cancel":     4,
+type ProjectController struct {
+	ProjectUC models.IProjectRepo
 }
 
-func RetrieveProject(ctx *gin.Context) {
-	var page = ctx.DefaultQuery("page", "1")
-	var limit = ctx.DefaultQuery("limit", "10")
-	intPage, _ := strconv.Atoi(page)
-	intLimit, _ := strconv.Atoi(limit)
-	offset := (intPage - 1) * intLimit
+func (pc *ProjectController) RetrieveProject(ctx *gin.Context) {
+	projects, err := pc.ProjectUC.GetAll(ctx)
 
-	var projects = []models.Project{}
-	status, haveStatus := ctx.GetQuery("status")
-	keyword, haveKeyword := ctx.GetQuery("keyword")
-
-	var query = initializers.DB.Limit(intLimit).Offset(offset)
-
-	if haveStatus {
-		query.Where("status_id = ?", Status[status])
-	}
-	if haveKeyword {
-		query.Where("name LIKE ?", "%"+keyword+"%")
-	}
-	query.Preload("Members").Find(&projects)
-
-	if query.Error != nil {
+	if err != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{
 			"status":  "error",
-			"message": query.Error,
+			"message": err.Error(),
 		})
 		return
 	}
@@ -54,7 +30,7 @@ func RetrieveProject(ctx *gin.Context) {
 	})
 }
 
-func CreateProject(ctx *gin.Context) {
+func (pc *ProjectController) CreateProject(ctx *gin.Context) {
 	var payload *models.CreateProjectRequest
 
 	if err := ctx.ShouldBindJSON(&payload); err != nil {
@@ -65,32 +41,12 @@ func CreateProject(ctx *gin.Context) {
 		return
 	}
 
-	members := []*models.Member{}
-	membersResult := initializers.DB.Where("id IN ?", payload.Members).Find(&members)
+	project, err := pc.ProjectUC.Create(payload)
 
-	if membersResult.Error != nil {
-		fmt.Println(membersResult.Error)
-	}
-
-	project := models.Project{
-		Name:           payload.Name,
-		Description:    payload.Description,
-		StatusID:       payload.StatusID,
-		Priority:       payload.Priority,
-		Health:         payload.Health,
-		ClientName:     payload.ClientName,
-		Members:        members,
-		Budget:         payload.Budget,
-		ActualReceived: payload.ActualReceived,
-		StartDate:      payload.StartDate,
-		EndDate:        payload.EndDate,
-	}
-
-	result := initializers.DB.Create(&project)
-	if result.Error != nil {
+	if err != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{
 			"status":  "error",
-			"message": result.Error,
+			"message": err.Error(),
 		})
 		return
 	}
@@ -102,19 +58,11 @@ func CreateProject(ctx *gin.Context) {
 	})
 }
 
-func GetProjectByIdOrName(ctx *gin.Context) {
-	idParam := ctx.Param("id")
-	var project = models.Project{}
-	id, err := strconv.Atoi(idParam)
+func (pc *ProjectController) GetProjectByIdOrName(ctx *gin.Context) {
+	id := ctx.Param("id")
 
-	var result *gorm.DB
+	project, err := pc.ProjectUC.GetByIdOrName(id)
 	if err != nil {
-		result = initializers.DB.Where("name LIKE ?", "%"+idParam+"%").Preload("Members").First(&project)
-	} else {
-		result = initializers.DB.Where("id = ?", id).Preload("Members").First(&project)
-	}
-
-	if result.Error != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{
 			"status":  "error",
 			"message": "Cannot find project",
@@ -127,10 +75,10 @@ func GetProjectByIdOrName(ctx *gin.Context) {
 	})
 }
 
-func UpdateProject(ctx *gin.Context) {
+func (pc *ProjectController) UpdateProject(ctx *gin.Context) {
 	id := ctx.Param("id")
+	idInt, _ := strconv.Atoi(id)
 	var payload *models.CreateProjectRequest
-	var projectInstance models.Project
 
 	if err := ctx.ShouldBindJSON(&payload); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
@@ -140,27 +88,20 @@ func UpdateProject(ctx *gin.Context) {
 		return
 	}
 
-	project := models.Project{
-		Name:           payload.Name,
-		Description:    payload.Description,
-		StatusID:       payload.StatusID,
-		Priority:       payload.Priority,
-		Health:         payload.Health,
-		StartDate:      payload.StartDate,
-		EndDate:        payload.EndDate,
-		ClientName:     payload.ClientName,
-		Budget:         payload.Budget,
-		ActualReceived: payload.ActualReceived,
+	project, err := pc.ProjectUC.Update(idInt, payload, ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"status":  "error",
+			"message": "Cannot update project",
+		})
+		return
 	}
 
-	result := initializers.DB.Model(&projectInstance).Where("id = ?", id).Updates(&project)
-
-	projectId, _ := strconv.Atoi(id)
-	if err := AssignMembersToProject(projectId, payload.Members); err != nil {
+	if err := pc.ProjectUC.AssignMembersToProject(idInt, payload.Members); err != nil {
 		println("Cannot save to association member_projects")
 	}
 
-	if result.Error != nil {
+	if err != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{
 			"status":  "error",
 			"message": "Cannot update project",
@@ -174,11 +115,12 @@ func UpdateProject(ctx *gin.Context) {
 	})
 }
 
-func DeleteProject(ctx *gin.Context) {
+func (pc *ProjectController) DeleteProject(ctx *gin.Context) {
 	id := ctx.Param("id")
-	result := initializers.DB.Delete(&models.Project{}, id)
+	idInt, _ := strconv.Atoi(id)
 
-	if result.Error != nil {
+	err := pc.ProjectUC.Delete(idInt)
+	if err != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{
 			"status":  "error",
 			"message": "Cannot delete project",
@@ -190,16 +132,4 @@ func DeleteProject(ctx *gin.Context) {
 		"status":  "success",
 		"message": "Deleted",
 	})
-}
-
-func AssignMembersToProject(projectId int, memberIds []uint) (err error) {
-	project := models.Project{}
-	members := []models.Member{}
-
-	println("Project ID 2: %s", projectId)
-	initializers.DB.First(&project, projectId)
-	initializers.DB.Where("id IN ?", memberIds).Find(&members)
-	err = initializers.DB.Model(&project).Association("Members").Replace(&members)
-
-	return err
 }

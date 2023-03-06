@@ -1,14 +1,15 @@
 package controllers
 
 import (
-	"http-server/initializers"
-	"http-server/models"
 	"net/http"
-	"os"
+	"strconv"
 	"time"
 
+	"http-server/initializers"
+	"http-server/models"
+	"http-server/repository"
+
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -71,6 +72,8 @@ func Signup(ctx *gin.Context) {
 
 func Login(ctx *gin.Context) {
 	var payload *LoginUserRequest
+	config, _ := initializers.LoadConfig(".")
+	jwtService := repository.NewJWT(&config)
 
 	err := ctx.ShouldBindJSON(&payload)
 	if err != nil {
@@ -102,21 +105,18 @@ func Login(ctx *gin.Context) {
 		return
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": user.ID,
-		"exp": time.Now().Add(time.Hour * 24 * 30).Unix(),
-	})
+	tokenExpHour, _ := strconv.Atoi(config.JWT_EXPIRY_HOUR)
+	refreshTokenExpHour, _ := strconv.Atoi(config.JWT_REFRESH_TOKEN_EXPIRY_HOUR)
+	tokenExp := time.Now().Add(time.Hour * time.Duration(tokenExpHour)).Unix()
+	refreshTokenExp := time.Now().Add(time.Hour * time.Duration(refreshTokenExpHour)).Unix()
 
-	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "Failed to generate token",
-		})
-		return
-	}
+	token, err := jwtService.GenerateToken(user.ID.String(), tokenExp)
+	refreshToken, err := jwtService.GenerateToken(user.ID.String(), refreshTokenExp)
+	ctx.SetCookie("token", token, int(tokenExpHour*3600), "/", "localhost", false, true)
+	ctx.SetCookie("refresh_token", refreshToken, int(refreshTokenExp*3600), "/", "localhost", false, true)
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"access_token": tokenString,
+		"access_token": token,
 	})
 }
 
@@ -128,3 +128,5 @@ func HashPassword(password string) (string, error) {
 
 	return string(hashedPassword), err
 }
+
+func FetchMe(ctx *gin.Context) {}

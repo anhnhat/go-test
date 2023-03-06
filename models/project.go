@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -49,4 +50,13 @@ type CreateProjectRequest struct {
 	ActualReceived float32   `json:"ActualReceived"`
 	StartDate      time.Time `json:"StartDate"`
 	EndDate        time.Time `json:"EndDate"`
+}
+
+type IProjectRepo interface {
+	GetAll(ctx *gin.Context) ([]Project, error)
+	GetByIdOrName(idOrName interface{}) (Project, error)
+	Create(payload *CreateProjectRequest) (Project, error)
+	Update(id int, payload *CreateProjectRequest, ctx *gin.Context) (Project, error)
+	Delete(id int) error
+	AssignMembersToProject(projectId int, memberIds []uint) error
 }

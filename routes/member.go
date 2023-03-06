@@ -1,16 +1,23 @@
 package routes
 
 import (
-	"http-server/controllers"
-
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+
+	"http-server/controllers"
+	"http-server/repository"
 )
 
-func MemberRoutes(r *gin.RouterGroup) {
+func NewMemberRoute(db *gorm.DB, r *gin.RouterGroup) {
+	memberRepo := repository.NewMemberRepo(db)
+	memberController := &controllers.MemberController{
+		MemberUC: memberRepo,
+	}
+
 	routes := r.Group("/members")
-	routes.GET("", controllers.RetreiveMembers)
-	routes.GET("/:id", controllers.GetMember)
-	routes.POST("", controllers.CreateMember)
-	routes.PUT("/:id", controllers.UpdateMember)
-	routes.DELETE("/:id", controllers.DeleteMember)
+	routes.GET("", memberController.RetreiveMembers)
+	routes.GET("/:id", memberController.GetMember)
+	routes.POST("", memberController.CreateMember)
+	routes.PUT("/:id", memberController.UpdateMember)
+	routes.DELETE("/:id", memberController.DeleteMember)
 }

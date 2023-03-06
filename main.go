@@ -1,24 +1,23 @@
 package main
 
 import (
-	"http-server/controllers"
 	"http-server/initializers"
 	"http-server/routes"
-	"log"
-	"strconv"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
-	startTime           int64
-	server              *gin.Engine
-	userRouteController routes.UserRouteController
+	startTime int64
+	ginServer *gin.Engine
 )
 
 func init() {
 	startTime = time.Now().Unix()
+	log.SetFormatter(&log.JSONFormatter{})
 
 	config, err := initializers.LoadConfig(".")
 	if err != nil {
@@ -26,34 +25,11 @@ func init() {
 	}
 	initializers.ConnectDB(&config)
 
-	userRouteController = routes.CreateRouteUserController(
-		controllers.CreateUserController(initializers.DB),
-	)
-
-	server = gin.Default()
-	server.Use(func() gin.HandlerFunc {
-		return func(c *gin.Context) {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-			c.Writer.Header().Set("Access-Control-Allow-Methods", "PUT, POST, GET, DELETE, OPTIONS")
-		}
-	}())
+	ginServer = gin.Default()
+	ginServer.Use(cors.Default())
 }
 
 func main() {
-	router := server.Group("/api/v1")
-	router.GET("/healthcheck", func(c *gin.Context) {
-		uptime := int(time.Now().Unix() - startTime)
-
-		c.Header("Cache-Control", "no-cache")
-		c.JSON(200, gin.H{
-			"status": "running",
-			"uptime": strconv.Itoa(uptime) + " seconds",
-		})
-	})
-	userRouteController.UserRoute(router)
-	routes.ProjectRoutes(router)
-	routes.AuthRoutes(router)
-	routes.MemberRoutes(router)
-
-	server.Run()
+	routes.Setup(initializers.DB, ginServer)
+	ginServer.Run()
 }

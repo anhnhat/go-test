@@ -1,39 +1,24 @@
 package controllers
 
 import (
-	"http-server/initializers"
-	"http-server/models"
 	"net/http"
 	"strconv"
+
+	"http-server/models"
 
 	"github.com/gin-gonic/gin"
 )
 
-func RetreiveMembers(ctx *gin.Context) {
-	var page = ctx.DefaultQuery("page", "1")
-	var limit = ctx.DefaultQuery("limit", "10")
-	intPage, _ := strconv.Atoi(page)
-	intLimit, _ := strconv.Atoi(limit)
-	offset := (intPage - 1) * intLimit
+type MemberController struct {
+	MemberUC models.IMemberRepo
+}
 
-	members := []models.Member{}
-	teamID, haveTeam := ctx.GetQuery("team_id")
-	keyword, haveKeyword := ctx.GetQuery("keyword")
-
-	var query = initializers.DB.Limit(intLimit).Offset(offset)
-
-	if haveTeam {
-		query.Where("team_id = ?", teamID)
-	}
-	if haveKeyword {
-		query.Where("name LIKE ?", "%"+keyword+"%")
-	}
-	query.Preload("Team").Preload("Roles").Find(&members)
-
-	if query.Error != nil {
+func (mc *MemberController) RetreiveMembers(ctx *gin.Context) {
+	members, err := mc.MemberUC.GetAll(ctx)
+	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
-			"message": query.Error,
+			"message": err.Error(),
 		})
 		return
 	}
@@ -44,7 +29,7 @@ func RetreiveMembers(ctx *gin.Context) {
 	})
 }
 
-func CreateMember(ctx *gin.Context) {
+func (mc *MemberController) CreateMember(ctx *gin.Context) {
 	var payload *models.CreateMemberRequest
 
 	if err := ctx.ShouldBind(&payload); err != nil {
@@ -55,27 +40,9 @@ func CreateMember(ctx *gin.Context) {
 		return
 	}
 
-	roles := []*models.Role{}
-	projects := []*models.Project{}
+	member, err := mc.MemberUC.CreateMember(payload, ctx)
 
-	initializers.DB.Find(&roles, payload.Roles)
-	initializers.DB.Find(&projects, payload.Projects)
-
-	member := models.Member{
-		Name:      payload.Name,
-		Email:     payload.Email,
-		Roles:     roles,
-		Projects:  projects,
-		TeamID:    int(payload.TeamID),
-		WorkModel: models.WorkModel(payload.WorkModel),
-		Salary:    float32(payload.Salary),
-		OtherCost: float32(payload.OtherCost),
-		StartDate: payload.StartDate,
-	}
-
-	result := initializers.DB.Create(&member)
-
-	if result.Error != nil {
+	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "Cannot create member",
@@ -89,7 +56,7 @@ func CreateMember(ctx *gin.Context) {
 	})
 }
 
-func UpdateMember(ctx *gin.Context) {
+func (mc *MemberController) UpdateMember(ctx *gin.Context) {
 	id := ctx.Param("id")
 	var payload *models.CreateMemberRequest
 
@@ -101,40 +68,18 @@ func UpdateMember(ctx *gin.Context) {
 		return
 	}
 
-	member := models.Member{
-		Name:      payload.Name,
-		Email:     payload.Email,
-		TeamID:    int(payload.TeamID),
-		WorkModel: models.WorkModel(payload.WorkModel),
-		Salary:    float32(payload.Salary),
-		OtherCost: float32(payload.OtherCost),
-	}
-
-	result := initializers.DB.Model(&member).Where("id = ?", id).Updates(&member)
-
 	memberId, _ := strconv.Atoi(id)
-
-	if roleErr := AssignRolesToMember(memberId, payload.Roles); roleErr != nil {
-		ctx.JSON(http.StatusBadGateway, gin.H{
-			"status":  "error",
-			"message": roleErr.Error(),
-		})
-	}
-
-	if err := AssignProjectsToMember(memberId, payload.Projects); err != nil {
-		ctx.JSON(http.StatusBadGateway, gin.H{
+	member, err := mc.MemberUC.UpdateMember(memberId, payload, ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": err.Error(),
 		})
-	}
-
-	if result.Error != nil {
-		ctx.JSON(http.StatusBadGateway, gin.H{
-			"status":  "error",
-			"message": "Cannot update project",
-		})
 		return
 	}
+
+	mc.MemberUC.AssignRolesToMember(memberId, payload.Roles)
+	mc.MemberUC.AssignProjectsToMember(memberId, payload.Projects)
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"status": "success",
@@ -142,13 +87,12 @@ func UpdateMember(ctx *gin.Context) {
 	})
 }
 
-func GetMember(ctx *gin.Context) {
+func (mc *MemberController) GetMember(ctx *gin.Context) {
 	id := ctx.Param("id")
+	idInt, _ := strconv.Atoi(id)
 
-	member := models.Member{}
-	result := initializers.DB.Where("id = ?", id).Preload("Roles").Preload("Projects").Preload("Team").First(&member, id)
-
-	if result.Error != nil {
+	member, err := mc.MemberUC.GetMemberById(idInt)
+	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "Cannot find member",
@@ -162,11 +106,11 @@ func GetMember(ctx *gin.Context) {
 	})
 }
 
-func DeleteMember(ctx *gin.Context) {
+func (mc *MemberController) DeleteMember(ctx *gin.Context) {
 	id := ctx.Param("id")
-	result := initializers.DB.Delete(&models.Member{}, id)
+	idInt, _ := strconv.Atoi(id)
 
-	if result.Error != nil {
+	if err := mc.MemberUC.DeleteMember(idInt); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "Cannot delete member",
@@ -178,26 +122,4 @@ func DeleteMember(ctx *gin.Context) {
 		"status":  "success",
 		"message": "Deleted",
 	})
-}
-
-func AssignProjectsToMember(memberId int, projectIds []int) error {
-	member := models.Member{}
-	projects := []models.Project{}
-
-	initializers.DB.First(&member, memberId)
-	initializers.DB.Where("id IN ?", projectIds).Find(&projects)
-	err := initializers.DB.Model(&member).Association("Projects").Replace(&projects)
-
-	return err
-}
-
-func AssignRolesToMember(memberId int, roleIds []int) error {
-	member := models.Member{}
-	roles := []models.Role{}
-
-	initializers.DB.First(&member, memberId)
-	initializers.DB.Where("id IN ?", roleIds).Find(&roles)
-	err := initializers.DB.Model(&member).Association("Roles").Replace(&roles)
-
-	return err
 }

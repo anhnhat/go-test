@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -16,8 +17,8 @@ const (
 
 type Member struct {
 	gorm.Model
-	Name      string     `gorm:"type:varchar(255);not null"`
-	Email     string     `gorm:"uniqueIndex;not null"`
+	Name      string     `gorm:"index:idx_members_email;type:varchar(255);not null"`
+	Email     string     `gorm:"index:idx_members_email;not null"`
 	Roles     []*Role    `gorm:"many2many:member_roles;"`
 	Projects  []*Project `gorm:"many2many:member_projects;"`
 	TeamID    int        `gorm:"default:null"`
@@ -38,4 +39,14 @@ type CreateMemberRequest struct {
 	OtherCost float32   `json:"OtherCost,omitempty"`
 	Projects  []int     `json:"ProjectIds,omitempty"`
 	StartDate time.Time `json:"StartDate,omitempty"`
+}
+
+type IMemberRepo interface {
+	GetAll(ctx *gin.Context) ([]Member, error)
+	CreateMember(payload *CreateMemberRequest, ctx *gin.Context) (Member, error)
+	UpdateMember(id int, payload *CreateMemberRequest, ctx *gin.Context) (Member, error)
+	GetMemberById(id int) (Member, error)
+	DeleteMember(id int) error
+	AssignProjectsToMember(memberId int, projectIds []int) error
+	AssignRolesToMember(memberId int, roleIds []int) error
 }
