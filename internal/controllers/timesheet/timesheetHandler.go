@@ -24,8 +24,12 @@ func NewTimesheetHandler(appCtx *appctx.AppCtx) timesheetHandler {
 }
 
 func (th *timesheetHandler) GetAll(ctx *gin.Context) {
-	timeSheets := th.timesheetService.GetAll()
-	ctx.JSON(http.StatusOK, gin.H{"data": timeSheets})
+	from, _ := ctx.GetQuery("from")
+	timeSheets := th.timesheetService.GetAll(from)
+	ctx.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data":   timeSheets,
+	})
 }
 
 func (th *timesheetHandler) GetByMemberId(ctx *gin.Context) {
@@ -57,20 +61,30 @@ func (th *timesheetHandler) Create(ctx *gin.Context) {
 func (th *timesheetHandler) Delete(ctx *gin.Context) {
 	id := ctx.Param("id")
 	idInt, _ := strconv.Atoi(id)
-	th.timesheetService.Delete(idInt)
+	if err := th.timesheetService.Delete(idInt); err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"status":  "error",
+			"message": err.Error(),
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "Delete timesheet successful",
+	})
 }
 
 func (th *timesheetHandler) SaveSegment(ctx *gin.Context) {
 	timesheetId := ctx.Param("id")
 	timesheetIdInt, _ := strconv.Atoi(timesheetId)
-	var segmentsPayload []models.CreateTimesheetSegment
-	if err := ctx.ShouldBindJSON(&segmentsPayload); err != nil {
+	var tsSegmentsPayload []models.CreateTimesheetSegment
+	if err := ctx.ShouldBindJSON(&tsSegmentsPayload); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	var segmentModels []models.TimeSheetSegment
-	for _, segment := range segmentsPayload {
+	for _, segment := range tsSegmentsPayload {
 		segmentModels = append(segmentModels, models.TimeSheetSegment{
 			TimeSheetID: uint(timesheetIdInt),
 			Hours:       segment.Hours,
@@ -78,6 +92,45 @@ func (th *timesheetHandler) SaveSegment(ctx *gin.Context) {
 		})
 	}
 	th.timesheetService.SaveSegment(timesheetIdInt, segmentModels)
+}
+
+func (th *timesheetHandler) SaveMultipleTsSegment(ctx *gin.Context) {
+	var tsSegmentsPayload []models.MultipleTsSegmentRequest
+
+	if err := ctx.ShouldBindJSON(&tsSegmentsPayload); err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"status":  "error",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// TODO: Handle error on save
+	errFlag := false // not work
+	for _, segment := range tsSegmentsPayload {
+		var segmentModels []models.TimeSheetSegment
+		for _, segmentNode := range segment.Segments {
+			segmentModels = append(segmentModels, models.TimeSheetSegment{
+				TimeSheetID: uint(segment.TimesheetId),
+				Hours:       segmentNode.Hours,
+				Date:        segmentNode.Date,
+			})
+		}
+		err := th.timesheetService.SaveSegment(segment.TimesheetId, segmentModels)
+		if err != nil {
+			errFlag = true
+			ctx.JSON(http.StatusBadGateway, gin.H{
+				"status":  "error",
+				"message": err.Error(),
+			})
+		}
+	}
+	if errFlag == false {
+		ctx.JSON(http.StatusCreated, gin.H{
+			"status":  "success",
+			"message": "Timesheet created successful",
+		})
+	}
 }
 
 func (th *timesheetHandler) GetById(ctx *gin.Context) {
