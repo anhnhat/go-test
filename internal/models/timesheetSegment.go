@@ -18,6 +18,16 @@ type CreateTimesheetSegment struct {
 	Date  datatypes.Date `json:"Date,omitempty"`
 }
 
+type SegmentRequest struct {
+	Hours float32        `json:"Hours,omitempty"`
+	Date  datatypes.Date `json:"Date,omitempty"`
+}
+
+type MultipleTsSegmentRequest struct {
+	TimesheetId int `json:"TimesheetId"`
+	Segments    []SegmentRequest
+}
+
 type ITimeSheetSegment interface {
 	Create()
 }

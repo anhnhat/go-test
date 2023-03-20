@@ -12,11 +12,12 @@ import (
 )
 
 type ITimeSheet interface {
-	GetAll() []models.TimeSheet
+	GetAll(from string) []models.TimeSheet
 	Create(models.TimeSheet) error
 	Update()
 	Delete(id int) error
-	SaveSegment(int, []models.TimeSheetSegment)
+	SaveSegment(int, []models.TimeSheetSegment) error
+	SaveMultipleTsSegment([]models.MultipleTsSegmentRequest)
 	GetById(id int) (models.TimeSheet, error)
 	GetByMemberId(memberId int, ctx *gin.Context)
 	GetByProjectId()
@@ -45,22 +46,9 @@ func NewTimeSheetService(db *gorm.DB) ITimeSheet {
 	}
 }
 
-func (ts *TimeSheet) GetAll() []models.TimeSheet {
+func (ts *TimeSheet) GetAll(from string) []models.TimeSheet {
 	timeSheets := []models.TimeSheet{}
 	result := ts.DB.Limit(10).Offset(0).Preload("Member").Preload("Project").Preload("TimeSheetSegment").Find(&timeSheets)
-
-	// formatTimesheets := []interface{}{}
-	// logs := []models.DayLog{}
-	// for _, timeSheet := range timeSheets {
-	// 	logs = append(logs, models.DayLog{
-	// 		Date:      timeSheet.DayLog.Date,
-	// 		TrackTime: timeSheet.DayLog.TrackTime,
-	// 	})
-	// 	formatTimesheets = append(formatTimesheets, FormatTimeSheet{
-	// 		ProjectName: timeSheet.Project.Name,
-	// 		MemberName:  timeSheet.Member.Name,
-	// 	})
-	// }
 
 	if result.Error != nil {
 		fmt.Println("Error on get all timesheet")
@@ -84,18 +72,22 @@ func (ts *TimeSheet) Delete(id int) error {
 	return err
 }
 
-func (ts *TimeSheet) SaveSegment(timesheetId int, timesheetSegments []models.TimeSheetSegment) {
+func (ts *TimeSheet) SaveSegment(timesheetId int, timesheetSegments []models.TimeSheetSegment) error {
 	_, err := ts.GetById(timesheetId)
 	if err != nil {
 		fmt.Println("Cannot get timesheet by id")
-		return
+		return err
 	}
 
 	tsErr := ts.DB.Create(&timesheetSegments)
 	if tsErr.Error != nil {
 		fmt.Printf("Error create segment: %s", tsErr.Error.Error())
+		return err
 	}
+	return nil
 }
+
+func (ts *TimeSheet) SaveMultipleTsSegment(tsSegments []models.MultipleTsSegmentRequest) {}
 
 func (ts *TimeSheet) GetById(id int) (models.TimeSheet, error) {
 	timesheet := models.TimeSheet{}

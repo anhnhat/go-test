@@ -34,22 +34,18 @@ func MiddleWare() gin.HandlerFunc {
 			// Gen new token if refresh token exist
 			tokenExpHour, _ := strconv.Atoi(config.JWT_EXPIRY_HOUR)
 			tokenExp := time.Now().Add(time.Hour * time.Duration(tokenExpHour)).Unix()
-			print(tokenExp)
 			newToken, _ := jwtService.RefreshToken(refreshToken, tokenExp)
 			ctx.SetCookie("token", newToken, tokenExpHour, "/", "localhost", false, true)
 			print("New Token: %s", newToken)
 		}
 
-		print(token)
 		// Decode token
 		id, err := jwtService.ExtractIDFromToken(token)
 		if err != nil {
 			fmt.Println("Cannot parse token")
-			print(err.Error())
 			ctx.Abort()
 			return
 		}
-		print(id)
 		ctx.Set("user-uuid", id)
 		ctx.Next()
 	}
